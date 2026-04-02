@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faDownload } from "@fortawesome/free-solid-svg-icons";
 import AssetForm from "../components/AssetForm.jsx";
 import AssetTable from "../components/AssetTable.jsx";
 import Pagination from "../components/Pagination.jsx";
-import { getAssets, saveAssets } from "../lib/storage.js";
+import { getAssets, saveAssets, addAuditLog } from "../lib/storage.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const PROVIDERS = ["All", "AWS", "Azure", "GCP", "Oracle", "Other"];
@@ -67,6 +69,13 @@ export default function Dashboard() {
       ...payload,
     };
     persistAssets([newAsset, ...assets]);
+    addAuditLog({
+      id: crypto.randomUUID(),
+      action: "ASSET_CREATE",
+      actor: user.email,
+      timestamp: new Date().toISOString(),
+      details: `${newAsset.assetName} (${newAsset.ipAddress})`,
+    });
     setEditing(null);
   };
 
@@ -75,12 +84,29 @@ export default function Dashboard() {
       asset.id === editing.id ? { ...asset, ...payload } : asset
     );
     persistAssets(updated);
+    addAuditLog({
+      id: crypto.randomUUID(),
+      action: "ASSET_UPDATE",
+      actor: user.email,
+      timestamp: new Date().toISOString(),
+      details: `${payload.assetName} (${payload.ipAddress})`,
+    });
     setEditing(null);
   };
 
   const handleDelete = (assetId) => {
+    const deleted = assets.find((asset) => asset.id === assetId);
     const updated = assets.filter((asset) => asset.id !== assetId);
     persistAssets(updated);
+    if (deleted) {
+      addAuditLog({
+        id: crypto.randomUUID(),
+        action: "ASSET_DELETE",
+        actor: user.email,
+        timestamp: new Date().toISOString(),
+        details: `${deleted.assetName} (${deleted.ipAddress})`,
+      });
+    }
   };
 
   const handleExport = () => {
@@ -119,7 +145,7 @@ export default function Dashboard() {
         </div>
         <div className="actions">
           <button className="secondary" onClick={handleExport}>
-            Export CSV
+            <FontAwesomeIcon icon={faDownload} /> Export CSV
           </button>
         </div>
       </div>

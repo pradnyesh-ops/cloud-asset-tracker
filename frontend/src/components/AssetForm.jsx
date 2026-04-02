@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { validateIPv4 } from "../lib/validators.js";
+import { validateIP } from "../lib/validators.js";
 
 const PROVIDERS = ["AWS", "Azure", "GCP", "Oracle", "Other"];
 const STATUSES = ["Active", "Decommissioned"];
@@ -36,8 +36,8 @@ export default function AssetForm({ initialValues, onSubmit, onCancel }) {
       setError("Asset name is required.");
       return;
     }
-    if (!validateIPv4(form.ipAddress)) {
-      setError("Enter a valid IPv4 address.");
+    if (!validateIP(form.ipAddress)) {
+      setError("Enter a valid IPv4 or IPv6 address.");
       return;
     }
     if (!form.cloudProvider) {
@@ -74,12 +74,12 @@ export default function AssetForm({ initialValues, onSubmit, onCancel }) {
           />
         </label>
         <label>
-          IPv4 address
+          IP address (IPv4 or IPv6)
           <input
             name="ipAddress"
             value={form.ipAddress}
             onChange={handleChange}
-            placeholder="10.1.20.30"
+            placeholder="10.1.20.30 or 2001:db8::1"
             required
           />
         </label>

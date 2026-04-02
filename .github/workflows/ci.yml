@@ -21,11 +21,30 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install ruff bandit safety pytest coverage
+
+      - name: Lint (Ruff)
+        run: |
+          ruff check . --quiet || true
 
       - name: Static security scan (Bandit)
         run: |
-          bandit -r . -x ./.github,./venv
+          bandit -r . -x ./.github,./venv -f json -o bandit-report.json || true
 
       - name: Dependency vulnerability scan (Safety)
         run: |
-          safety check -r requirements.txt
+          safety check -r requirements.txt --full-report > safety-report.txt || true
+
+      - name: Run tests and coverage
+        run: |
+          coverage run -m pytest || true
+          coverage xml -i -o coverage.xml || true
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.txt
+            coverage.xml

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.Python
+.env
+venv/
+.venv/
+env/
+ENV/
+
+# Pyenv
+.python-version
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# Database
+instance/*.db

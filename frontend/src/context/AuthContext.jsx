@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { getUsers, saveUsers, getSession, saveSession, clearSession } from "../lib/storage.js";
+import {
+  getUsers,
+  saveUsers,
+  getSession,
+  saveSession,
+  clearSession,
+  addAuditLog,
+} from "../lib/storage.js";
 import { validateEmail, validatePassword } from "../lib/validators.js";
 
 const AuthContext = createContext(null);
@@ -53,6 +60,13 @@ export const AuthProvider = ({ children }) => {
     users.push(newUser);
     saveUsers(users);
     setUser({ id: newUser.id, email: newUser.email, name: newUser.name });
+    addAuditLog({
+      id: crypto.randomUUID(),
+      action: "REGISTER",
+      actor: newUser.email,
+      timestamp: new Date().toISOString(),
+      details: "User registration",
+    });
     return true;
   };
 
@@ -71,10 +85,28 @@ export const AuthProvider = ({ children }) => {
       return false;
     }
     setUser({ id: existing.id, email: existing.email, name: existing.name });
+    addAuditLog({
+      id: crypto.randomUUID(),
+      action: "LOGIN",
+      actor: existing.email,
+      timestamp: new Date().toISOString(),
+      details: "User login",
+    });
     return true;
   };
 
-  const logout = () => setUser(null);
+  const logout = () => {
+    if (user?.email) {
+      addAuditLog({
+        id: crypto.randomUUID(),
+        action: "LOGOUT",
+        actor: user.email,
+        timestamp: new Date().toISOString(),
+        details: "User logout",
+      });
+    }
+    setUser(null);
+  };
 
   const updateProfile = (updates) => {
     const users = getUsers();
@@ -86,6 +118,13 @@ export const AuthProvider = ({ children }) => {
     users[index] = updated;
     saveUsers(users);
     setUser({ id: updated.id, email: updated.email, name: updated.name });
+    addAuditLog({
+      id: crypto.randomUUID(),
+      action: "PROFILE_UPDATE",
+      actor: updated.email,
+      timestamp: new Date().toISOString(),
+      details: "Profile updated",
+    });
     return true;
   };
 
