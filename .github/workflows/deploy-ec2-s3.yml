@@ -1,0 +1,47 @@
+name: Deploy to EC2 (Self-hosted)
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync code to app directory
+        run: |
+          sudo mkdir -p /opt/cloud-asset-tracker
+          sudo rsync -a --delete \
+            --exclude ".git" \
+            --exclude ".venv" \
+            --exclude "frontend/node_modules" \
+            --exclude "frontend/dist" \
+            --exclude "instance/*.db" \
+            "$GITHUB_WORKSPACE/" /opt/cloud-asset-tracker/
+          sudo chown -R "$USER":"$USER" /opt/cloud-asset-tracker
+
+      - name: Install dependencies
+        run: |
+          cd /opt/cloud-asset-tracker
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restart service
+        run: |
+          sudo systemctl daemon-reload
+          sudo systemctl restart cloud-asset-tracker
+          sleep 3
+          curl -fsS http://127.0.0.1:8000/health
+
+      - name: External health check (optional)
+        if: env.EC2_HEALTHCHECK_URL != ''
+        env:
+          EC2_HEALTHCHECK_URL: ${{ secrets.EC2_HEALTHCHECK_URL }}
+        run: |
+          curl -fsS "${EC2_HEALTHCHECK_URL}"
