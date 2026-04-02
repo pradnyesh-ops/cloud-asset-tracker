@@ -32,9 +32,21 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Configure systemd and nginx
+        run: |
+          test -f /opt/cloud-asset-tracker/.env || (echo "/opt/cloud-asset-tracker/.env missing" && exit 1)
+          sudo cp /opt/cloud-asset-tracker/deploy/cloud-asset-tracker.service /etc/systemd/system/cloud-asset-tracker.service
+          sudo cp /opt/cloud-asset-tracker/deploy/nginx-cloud-asset-tracker.conf /etc/nginx/sites-available/cloud-asset-tracker
+          sudo ln -sf /etc/nginx/sites-available/cloud-asset-tracker /etc/nginx/sites-enabled/cloud-asset-tracker
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo nginx -t
+          sudo systemctl enable nginx
+          sudo systemctl restart nginx
+
       - name: Restart service
         run: |
           sudo systemctl daemon-reload
+          sudo systemctl enable cloud-asset-tracker
           sudo systemctl restart cloud-asset-tracker
           sleep 3
           curl -fsS http://127.0.0.1:8000/health
