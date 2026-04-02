@@ -1,78 +1,103 @@
-# Cloud Asset Tracker (Netlify + GitHub Actions)
+# Cloud Asset Tracker (Flask + React + EC2 CI/CD)
 
-This project includes:
-- React frontend in `frontend/`
-- Flask backend in `app.py`
-- CI pipeline in `.github/workflows/ci.yml`
-- Netlify deploy workflow in `.github/workflows/deploy-netlify.yml`
+Cloud Asset Tracker is a full-stack app for managing cloud assets with authentication, filtering, reporting, and export.
 
-## Secure secrets and environment handling
+## Tech Stack
 
-The backend now requires these environment variables:
-- `SECRET_KEY`
-- `DATABASE_URL`
+- Backend: Flask, Flask-SQLAlchemy, Flask-Login, Flask-Bcrypt
+- Frontend: React + Vite
+- Database: SQLite (default)
+- Deployment: AWS EC2 (Gunicorn + Nginx)
+- CI/CD: GitHub Actions
 
-If missing, app startup fails by design.
+## Project Structure
 
-### Local setup (backend)
-1. Copy `.env.example` to `.env`
-2. Set strong values
-3. Run backend
+- Backend entrypoint: `app.py`
+- WSGI entrypoint: `application.py`
+- Frontend: `frontend/`
+- CI/CD workflow: `.github/workflows/cicd.yml`
 
-```bash
-cd "/Users/pradnyesh/CloudSecOps/Cloud Asset Tracker"
-cp .env.example .env
-/Users/pradnyesh/.pyenv/versions/myproject/bin/python app.py
+## Local Development
+
+### 1) Backend
+
+From the project root, create `.env`:
+
+```env
+SECRET_KEY=replace_with_strong_random_secret
+DATABASE_URL=sqlite:///cloud_asset_tracker.db
+FLASK_DEBUG=true
 ```
 
-### Local setup (frontend)
+Install and run:
+
 ```bash
-cd "/Users/pradnyesh/CloudSecOps/Cloud Asset Tracker/frontend"
+python -m pip install -r requirements.txt
+python app.py
+```
+
+Backend runs on `http://127.0.0.1:5000`.
+
+### 2) Frontend (Vite dev mode)
+
+```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-## Instant deployment with Netlify + GitHub Actions
-Deployment workflow file:
-- `.github/workflows/deploy-netlify.yml`
+Frontend runs on Vite dev server (usually `http://127.0.0.1:5173`).
 
-One-time setup:
-1. Create a Netlify site connected to this repository.
-2. In Netlify, copy:
-	- Personal access token (or team token)
-	- Site ID
-3. In GitHub repository secrets, add:
-	- `NETLIFY_AUTH_TOKEN`
-	- `NETLIFY_SITE_ID`
+### 3) Frontend production build (served by Flask)
 
-After that, pushes to `main`/`master` (frontend changes) build and deploy automatically with clear GitHub Actions visuals.
+```bash
+cd frontend
+npm run build
+```
 
-## Backend note
-The app serves built React files from Flask directly, so it runs as one service.
+Flask serves `frontend/dist` in production-style run.
 
-## CI pipeline
-CI runs:
-- Ruff lint
-- Bandit SAST
-- Safety dependency scan
-- Pytest + coverage (if tests exist)
-- Uploads reports as artifacts
+## CI/CD Pipeline (GitHub Actions)
 
-## Deployment visuals in GitHub Actions
-For presentation, use these runs:
-- `CI`
-- `pre-commit`
-- `Deploy Frontend (Netlify)`
+Workflow file: `.github/workflows/cicd.yml`
 
-> Note: No `.pem` key is required for deployment when using SSM.
+Pipeline jobs:
+1. **backend-checks**
+	- compile check
+	- pytest (skips if no tests)
+	- bandit
+	- pip-audit
+2. **frontend-checks**
+	- npm install/ci
+	- vite build
+3. **deploy** (only on push to `main`/`master`)
+	- sync project to EC2
+	- install Python deps
+	- build frontend on EC2
+	- restart `gunicorn` and `nginx`
 
-## One-time EC2 setup
-Copy deployment templates from `deploy/`:
-- `deploy/cloud-asset-tracker.service` to `/etc/systemd/system/cloud-asset-tracker.service`
-- `deploy/nginx-cloud-asset-tracker.conf` to `/etc/nginx/conf.d/cloud-asset-tracker.conf`
+## Required GitHub Secrets
 
-Then run:
-1. `sudo systemctl daemon-reload`
-2. `sudo systemctl enable cloud-asset-tracker`
-3. `sudo systemctl start cloud-asset-tracker`
-4. `sudo systemctl restart nginx`
+Add these under repository **Settings → Secrets and variables → Actions**:
+
+- `EC2_SSH_KEY`
+- `EC2_USER`
+- `EC2_HOST`
+- `PROJECT_PATH`
+
+## EC2 Server Notes
+
+- App directory on server should match `PROJECT_PATH`.
+- `.env` must exist on server with at least:
+
+```env
+SECRET_KEY=replace_with_strong_random_secret
+DATABASE_URL=sqlite:///cloud_asset_tracker.db
+FLASK_DEBUG=false
+```
+
+- Services expected on server:
+  - `gunicorn`
+  - `nginx`
+
+Detailed EC2 setup steps are available in `docs/EC2_DEPLOYMENT_GUIDE.md`.

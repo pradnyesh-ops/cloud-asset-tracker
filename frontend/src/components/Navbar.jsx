@@ -29,7 +29,7 @@ export default function Navbar() {
     <header className="navbar">
       <div className="container navbar-content">
         <Link to="/dashboard" className="brand">
-          <FontAwesomeIcon icon={faCloud} /> Cloud Asset Tracker
+          <FontAwesomeIcon icon={faCloud} /> Cloud Asset Tracker V1
         </Link>
         <nav className="nav-links">
           {user ? (
