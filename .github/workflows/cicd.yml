@@ -115,6 +115,24 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
+      - name: Sync project files to EC2
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          PROJECT_PATH: ${{ secrets.PROJECT_PATH }}
+        run: |
+          ssh -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "mkdir -p '$PROJECT_PATH'"
+
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".venv" \
+            --exclude "venv" \
+            --exclude "frontend/node_modules" \
+            --exclude "frontend/dist" \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ "$EC2_USER@$EC2_HOST:$PROJECT_PATH/"
+
       - name: Deploy to EC2
         env:
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -127,15 +145,12 @@ jobs:
 
             set -e   # abort immediately on any error
 
-            echo "──────────────────────────────────"
-            echo "📥  Pull latest code"
-            echo "──────────────────────────────────"
             cd "$PROJECT_PATH"
-            git pull origin main
 
             echo "──────────────────────────────────"
             echo "🐍  Activate venv + install deps"
             echo "──────────────────────────────────"
+            python3 -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt --quiet
 
