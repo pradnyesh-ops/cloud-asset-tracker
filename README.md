@@ -1,12 +1,12 @@
-# Cloud Asset Tracker (AWS + GitHub Actions)
+# Cloud Asset Tracker (Netlify + GitHub Actions)
 
 This project includes:
 - React frontend in `frontend/`
 - Flask backend in `app.py`
 - CI pipeline in `.github/workflows/ci.yml`
-- AWS Elastic Beanstalk deploy workflow in `.github/workflows/deploy-aws-eb.yml`
+- Netlify deploy workflow in `.github/workflows/deploy-netlify.yml`
 
-## Step 5: Secure secrets and environment handling
+## Secure secrets and environment handling
 
 The backend now requires these environment variables:
 - `SECRET_KEY`
@@ -32,20 +32,23 @@ npm install
 npm run dev
 ```
 
-## GitHub secrets (for AWS deploy workflow)
-Set these in repository settings -> Secrets and variables -> Actions:
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION`
-- `EB_APP_NAME`
-- `EB_ENV_NAME`
-- `EB_HEALTHCHECK_URL` (optional, e.g. your EB URL or `/health` endpoint)
+## Instant deployment with Netlify + GitHub Actions
+Deployment workflow file:
+- `.github/workflows/deploy-netlify.yml`
 
-## Elastic Beanstalk environment variables
-Set these in AWS Elastic Beanstalk environment configuration:
-- `SECRET_KEY`
-- `DATABASE_URL`
-- `FLASK_DEBUG=false`
+One-time setup:
+1. Create a Netlify site connected to this repository.
+2. In Netlify, copy:
+	- Personal access token (or team token)
+	- Site ID
+3. In GitHub repository secrets, add:
+	- `NETLIFY_AUTH_TOKEN`
+	- `NETLIFY_SITE_ID`
+
+After that, pushes to `main`/`master` (frontend changes) build and deploy automatically with clear GitHub Actions visuals.
+
+## Backend note
+The app serves built React files from Flask directly, so it runs as one service.
 
 ## CI pipeline
 CI runs:
@@ -55,9 +58,21 @@ CI runs:
 - Pytest + coverage (if tests exist)
 - Uploads reports as artifacts
 
-## Step 7: AWS deploy workflow
-Deployment workflow in `.github/workflows/deploy-aws-eb.yml` now supports:
-- Automatic deploy on push to `main`/`master`
-- Manual deploy trigger (`workflow_dispatch`)
-- Version labels: `release-<run_number>-<sha>`
-- Optional post-deploy health check using `EB_HEALTHCHECK_URL`
+## Deployment visuals in GitHub Actions
+For presentation, use these runs:
+- `CI`
+- `pre-commit`
+- `Deploy Frontend (Netlify)`
+
+> Note: No `.pem` key is required for deployment when using SSM.
+
+## One-time EC2 setup
+Copy deployment templates from `deploy/`:
+- `deploy/cloud-asset-tracker.service` to `/etc/systemd/system/cloud-asset-tracker.service`
+- `deploy/nginx-cloud-asset-tracker.conf` to `/etc/nginx/conf.d/cloud-asset-tracker.conf`
+
+Then run:
+1. `sudo systemctl daemon-reload`
+2. `sudo systemctl enable cloud-asset-tracker`
+3. `sudo systemctl start cloud-asset-tracker`
+4. `sudo systemctl restart nginx`

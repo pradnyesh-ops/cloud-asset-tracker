@@ -3,44 +3,27 @@ import re
 import ipaddress
 from datetime import datetime
 
-from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import (
-    LoginManager,
-    UserMixin,
-    login_user,
-    login_required,
-    logout_user,
-    current_user,
-)
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
-from jinja2 import TemplateNotFound
 
 load_dotenv()
 
-
-def require_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value
-
-
-app = Flask(__name__)
-app.config["SECRET_KEY"] = require_env("SECRET_KEY")
-app.config["SQLALCHEMY_DATABASE_URI"] = require_env("DATABASE_URL")
+app = Flask(__name__, static_folder="frontend/dist", static_url_path="/")
+CORS(app, supports_credentials=True)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///cloud_asset_tracker.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 bcrypt = Bcrypt(app)
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
-login_manager.login_view = "login"
-login_manager.login_message_category = "warning"
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_REGEX = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$")
-
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -48,7 +31,6 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     assets = db.relationship("Asset", backref="owner", lazy=True)
-
 
 class Asset(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,11 +40,13 @@ class Asset(db.Model):
     owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@login_manager.unauthorized_handler
+def unauthorized():
+    return jsonify({"error": "Unauthorized"}), 401
 
 def validate_ip(value: str) -> bool:
     try:
@@ -71,198 +55,133 @@ def validate_ip(value: str) -> bool:
     except ValueError:
         return False
 
-
 def validate_password(value: str) -> bool:
     return bool(PASSWORD_REGEX.match(value))
 
+@app.route("/api/auth/me", methods=["GET"])
+def current_user_info():
+    if current_user.is_authenticated:
+        return jsonify({"id": current_user.id, "email": current_user.email})
+    return jsonify({"error": "Unauthorized"}), 401
 
-def render_or_message(template_name: str, **context):
-    try:
-        return render_template(template_name, **context)
-    except TemplateNotFound:
-        return (
-            jsonify(
-                {
-                    "message": "Flask templates are not present. Use the React frontend at http://localhost:5173.",
-                    "missing_template": template_name,
-                }
-            ),
-            200,
-        )
-
-
-@app.route("/")
-def index():
-    return jsonify({"status": "ok", "service": "cloud-asset-tracker-backend"}), 200
-
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "healthy"}), 200
-
-
-@app.route("/register", methods=["GET", "POST"])
+@app.route("/api/auth/register", methods=["POST"])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    confirm_password = data.get("confirm_password", "")
 
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
+    if not email or not password or not confirm_password:
+        return jsonify({"error": "All fields are required."}), 400
 
-        if not email or not password or not confirm_password:
-            flash("All fields are required.", "danger")
-            return render_or_message("register.html")
+    if not EMAIL_REGEX.match(email):
+        return jsonify({"error": "Enter a valid email address."}), 400
 
-        if not EMAIL_REGEX.match(email):
-            flash("Enter a valid email address.", "danger")
-            return render_or_message("register.html")
+    if not validate_password(password):
+        return jsonify({"error": "Password must be 8+ chars ...", "message": "Password requires 8+ chars and symbol."}), 400
 
-        if not validate_password(password):
-            flash(
-                "Password must be 8+ chars with upper, lower, number, and symbol.",
-                "danger",
-            )
-            return render_or_message("register.html")
+    if password != confirm_password:
+        return jsonify({"error": "Passwords do not match."}), 400
 
-        if password != confirm_password:
-            flash("Passwords do not match.", "danger")
-            return render_or_message("register.html")
+    existing_user = User.query.filter_by(email=email).first()
+    if existing_user:
+        return jsonify({"error": "Email already registered."}), 400
 
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            flash("Email already registered. Please log in.", "warning")
-            return redirect(url_for("login"))
+    hashed_password = bcrypt.generate_password_hash(password).decode("utf-8")
+    user = User(email=email, password_hash=hashed_password)
+    db.session.add(user)
+    db.session.commit()
 
-        hashed_password = bcrypt.generate_password_hash(password).decode("utf-8")
-        user = User(email=email, password_hash=hashed_password)
-        db.session.add(user)
-        db.session.commit()
+    return jsonify({"message": "Registration successful"}), 201
 
-        flash("Registration successful. Please log in.", "success")
-        return redirect(url_for("login"))
-
-    return render_or_message("register.html")
-
-
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/api/auth/login", methods=["POST"])
 def login():
-    if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
 
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
+    user = User.query.filter_by(email=email).first()
+    if user and bcrypt.check_password_hash(user.password_hash, password):
+        login_user(user)
+        return jsonify({"message": "Login successful", "user": {"id": user.id, "email": user.email}}), 200
 
-        user = User.query.filter_by(email=email).first()
-        if user and bcrypt.check_password_hash(user.password_hash, password):
-            login_user(user)
-            flash("Welcome back!", "success")
-            return redirect(url_for("dashboard"))
+    return jsonify({"error": "Invalid credentials."}), 401
 
-        flash("Invalid credentials.", "danger")
-
-    return render_or_message("login.html")
-
-
-@app.route("/logout")
+@app.route("/api/auth/logout", methods=["POST"])
 @login_required
 def logout():
     logout_user()
-    flash("You have been logged out.", "info")
-    return redirect(url_for("login"))
+    return jsonify({"message": "Logged out"}), 200
 
-
-@app.route("/dashboard")
+@app.route("/api/assets", methods=["GET"])
 @login_required
-def dashboard():
+def get_assets():
     assets = Asset.query.filter_by(owner_id=current_user.id).all()
-    return render_or_message("dashboard.html", assets=assets)
+    return jsonify([{
+        "id": a.id,
+        "asset_name": a.asset_name,
+        "ip_address": a.ip_address,
+        "cloud_provider": a.cloud_provider,
+        "created_at": a.created_at.isoformat()
+    } for a in assets]), 200
 
-
-@app.route("/asset/new", methods=["GET", "POST"])
+@app.route("/api/assets", methods=["POST"])
 @login_required
 def create_asset():
-    if request.method == "POST":
-        asset_name = request.form.get("asset_name", "").strip()
-        ip_address = request.form.get("ip_address", "").strip()
-        cloud_provider = request.form.get("cloud_provider", "").strip()
+    data = request.get_json() or {}
+    asset_name = data.get("asset_name", "").strip()
+    ip_address = data.get("ip_address", "").strip()
+    cloud_provider = data.get("cloud_provider", "").strip()
 
-        if not asset_name:
-            flash("Asset name is required.", "danger")
-            return render_or_message("asset_form.html", action="Create")
+    if not asset_name or not cloud_provider:
+        return jsonify({"error": "Fields are required."}), 400
 
-        if not validate_ip(ip_address):
-            flash("Enter a valid IPv4 address.", "danger")
-            return render_or_message("asset_form.html", action="Create")
+    if not validate_ip(ip_address):
+        return jsonify({"error": "Enter a valid IPv4 address."}), 400
 
-        if not cloud_provider:
-            flash("Cloud provider is required.", "danger")
-            return render_or_message("asset_form.html", action="Create")
+    asset = Asset(
+        asset_name=asset_name,
+        ip_address=ip_address,
+        cloud_provider=cloud_provider,
+        owner_id=current_user.id,
+    )
+    db.session.add(asset)
+    db.session.commit()
+    return jsonify({"id": asset.id, "asset_name": asset.asset_name, "ip_address": asset.ip_address, "cloud_provider": asset.cloud_provider}), 201
 
-        asset = Asset(
-            asset_name=asset_name,
-            ip_address=ip_address,
-            cloud_provider=cloud_provider,
-            owner_id=current_user.id,
-        )
-        db.session.add(asset)
-        db.session.commit()
-
-        flash("Asset created successfully.", "success")
-        return redirect(url_for("dashboard"))
-
-    return render_or_message("asset_form.html", action="Create")
-
-
-@app.route("/asset/<int:asset_id>/edit", methods=["GET", "POST"])
+@app.route("/api/assets/<int:asset_id>", methods=["PUT"])
 @login_required
-def edit_asset(asset_id):
-    asset = Asset.query.filter_by(id=asset_id, owner_id=current_user.id).first_or_404()
+def update_asset(asset_id):
+    asset = Asset.query.filter_by(id=asset_id, owner_id=current_user.id).first()
+    if not asset:
+        return jsonify({"error": "Asset not found"}), 404
+    data = request.get_json() or {}
+    asset.asset_name = data.get("asset_name", asset.asset_name).strip()
+    asset.ip_address = data.get("ip_address", asset.ip_address).strip()
+    asset.cloud_provider = data.get("cloud_provider", asset.cloud_provider).strip()
+    db.session.commit()
+    return jsonify({"id": asset.id}), 200
 
-    if request.method == "POST":
-        asset_name = request.form.get("asset_name", "").strip()
-        ip_address = request.form.get("ip_address", "").strip()
-        cloud_provider = request.form.get("cloud_provider", "").strip()
-
-        if not asset_name:
-            flash("Asset name is required.", "danger")
-            return render_or_message("asset_form.html", action="Update", asset=asset)
-
-        if not validate_ip(ip_address):
-            flash("Enter a valid IPv4 address.", "danger")
-            return render_or_message("asset_form.html", action="Update", asset=asset)
-
-        if not cloud_provider:
-            flash("Cloud provider is required.", "danger")
-            return render_or_message("asset_form.html", action="Update", asset=asset)
-
-        asset.asset_name = asset_name
-        asset.ip_address = ip_address
-        asset.cloud_provider = cloud_provider
-        db.session.commit()
-
-        flash("Asset updated successfully.", "success")
-        return redirect(url_for("dashboard"))
-
-    return render_or_message("asset_form.html", action="Update", asset=asset)
-
-
-@app.route("/asset/<int:asset_id>/delete", methods=["POST"])
+@app.route("/api/assets/<int:asset_id>", methods=["DELETE"])
 @login_required
 def delete_asset(asset_id):
-    asset = Asset.query.filter_by(id=asset_id, owner_id=current_user.id).first_or_404()
+    asset = Asset.query.filter_by(id=asset_id, owner_id=current_user.id).first()
+    if not asset:
+        return jsonify({"error": "Asset not found"}), 404
     db.session.delete(asset)
     db.session.commit()
-    flash("Asset deleted successfully.", "info")
-    return redirect(url_for("dashboard"))
+    return jsonify({"message": "Deleted"}), 200
 
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + "/" + path):
+        return app.send_static_file(path)
+    else:
+        return app.send_static_file("index.html")
 
 with app.app_context():
     db.create_all()
 
-
 if __name__ == "__main__":
-    debug_mode = os.getenv("FLASK_DEBUG", "false").strip().lower() == "true"
-    app.run(debug=debug_mode)
+    app.run(debug=True, port=5000)

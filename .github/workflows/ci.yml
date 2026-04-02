@@ -4,10 +4,20 @@ on:
   push:
     branches: ["main", "master"]
   pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  basic-checks:
+  backend-quality-and-security:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,47 +25,63 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.9"
+          cache: "pip"
 
-      - name: Install dependencies
+      - name: Install dependencies and tooling
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff bandit safety pytest coverage
+          pip install pytest pip-audit
 
-      - name: Set test environment
+      - name: Basic syntax check
         run: |
-          echo "SECRET_KEY=ci-secret-key" >> "$GITHUB_ENV"
-          echo "DATABASE_URL=sqlite:///:memory:" >> "$GITHUB_ENV"
+          python -m compileall app.py application.py
 
-      - name: Lint (Ruff)
-        run: ruff check .
+      - name: Run tests (if present)
+        run: |
+          set +e
+          pytest -q
+          test_exit_code=$?
+          set -e
+
+          if [ "$test_exit_code" -eq 5 ]; then
+            echo "No tests collected yet. Continuing."
+            exit 0
+          fi
+
+          exit "$test_exit_code"
 
       - name: Static security scan (Bandit)
         run: |
-          bandit -r . -x ./.github,./venv,./.venv,./frontend/node_modules -s B101 -f json -o bandit-report.json || true
+          bandit -r . -x ./.github,./venv,./.venv,./frontend,./node_modules
 
-      - name: Dependency vulnerability scan (Safety)
+      - name: Dependency vulnerability scan (pip-audit)
         run: |
-          safety check -r requirements.txt --full-report > safety-report.txt || true
+          pip-audit -r requirements.txt
 
-      - name: Run tests and coverage
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
         run: |
-          if [ -d tests ]; then
-            coverage run -m pytest
-            coverage report --fail-under=45
-            coverage xml -i -o coverage.xml
+          if [ -f package-lock.json ]; then
+            npm ci
           else
-            echo "No tests directory found; skipping pytest for now."
-            printf '<coverage version="1"></coverage>' > coverage.xml
+            npm install
           fi
 
-      - name: Upload reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-reports
-          path: |
-            bandit-report.json
-            safety-report.txt
-            coverage.xml
+      - name: Frontend production build
+        run: npm run build

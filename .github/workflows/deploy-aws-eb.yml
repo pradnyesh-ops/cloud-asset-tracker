@@ -1,18 +1,41 @@
 name: Deploy to AWS Elastic Beanstalk
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: ["main", "master"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-eb-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
-    env:
-      VERSION_LABEL: release-${{ github.run_number }}-${{ github.sha }}
+
     steps:
-      - name: Checkout
+      - name: Checkout tested commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Create deploy bundle
+        run: |
+          zip -r "eb-deploy.zip" . \
+            -x ".git/*" \
+               ".github/*" \
+               "frontend/*" \
+               "node_modules/*" \
+               "**/__pycache__/*" \
+               "**/*.pyc" \
+               ".venv/*" \
+               "venv/*"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -29,13 +52,6 @@ jobs:
           application_name: ${{ secrets.EB_APP_NAME }}
           environment_name: ${{ secrets.EB_ENV_NAME }}
           region: ${{ secrets.AWS_REGION }}
-          version_label: ${{ env.VERSION_LABEL }}
-          deployment_package: .
-
-      - name: Post-deploy health check (optional)
-        if: env.EB_HEALTHCHECK_URL != ''
-        run: |
-          echo "Checking ${EB_HEALTHCHECK_URL}"
-          curl --fail --silent --show-error --max-time 20 "${EB_HEALTHCHECK_URL}"
-        env:
-          EB_HEALTHCHECK_URL: ${{ secrets.EB_HEALTHCHECK_URL }}
+          version_label: ${{ format('deploy-{0}-{1}', github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha, github.run_number) }}
+          deployment_package: eb-deploy.zip
+          wait_for_deployment: true
