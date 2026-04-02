@@ -4,7 +4,7 @@ Flask-Login==0.6.3
 Flask-Bcrypt==1.0.1
 python-dotenv==1.0.1
 gunicorn==22.0.0
-bandit==1.7.8
+bandit==1.9.4
 safety==3.2.5
 pre-commit==3.4.0
 pytest==8.3.3
