@@ -3,10 +3,13 @@ name: Deploy to AWS Elastic Beanstalk
 on:
   push:
     branches: ["main", "master"]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VERSION_LABEL: release-${{ github.run_number }}-${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,5 +29,13 @@ jobs:
           application_name: ${{ secrets.EB_APP_NAME }}
           environment_name: ${{ secrets.EB_ENV_NAME }}
           region: ${{ secrets.AWS_REGION }}
-          version_label: ${{ github.sha }}
+          version_label: ${{ env.VERSION_LABEL }}
           deployment_package: .
+
+      - name: Post-deploy health check (optional)
+        if: env.EB_HEALTHCHECK_URL != ''
+        run: |
+          echo "Checking ${EB_HEALTHCHECK_URL}"
+          curl --fail --silent --show-error --max-time 20 "${EB_HEALTHCHECK_URL}"
+        env:
+          EB_HEALTHCHECK_URL: ${{ secrets.EB_HEALTHCHECK_URL }}

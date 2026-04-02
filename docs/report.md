@@ -30,4 +30,3 @@ coverage report
 ## References
 - Bandit: https://bandit.readthedocs.io/
 - Safety: https://pyup.io/safety/
-

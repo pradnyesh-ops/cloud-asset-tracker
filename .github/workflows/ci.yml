@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  build:
+  basic-checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,23 +24,29 @@ jobs:
           pip install ruff bandit safety pytest coverage
 
       - name: Lint (Ruff)
-        run: |
-          ruff check . --quiet || true
+        run: ruff check .
 
       - name: Static security scan (Bandit)
         run: |
-          bandit -r . -x ./.github,./venv -f json -o bandit-report.json || true
+          bandit -r . -x ./.github,./venv,./.venv,./frontend/node_modules -s B101 -f json -o bandit-report.json
 
       - name: Dependency vulnerability scan (Safety)
         run: |
-          safety check -r requirements.txt --full-report > safety-report.txt || true
+          safety check -r requirements.txt --full-report > safety-report.txt
 
       - name: Run tests and coverage
         run: |
-          coverage run -m pytest || true
-          coverage xml -i -o coverage.xml || true
+          if [ -d tests ]; then
+            coverage run -m pytest
+            coverage report --fail-under=45
+            coverage xml -i -o coverage.xml
+          else
+            echo "No tests directory found; skipping pytest for now."
+            printf '<coverage version="1"></coverage>' > coverage.xml
+          fi
 
       - name: Upload reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-reports

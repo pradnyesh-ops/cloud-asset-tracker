@@ -1,14 +1,23 @@
+exclude: ^(frontend/node_modules/|frontend/dist/|frontend/\.vite/|\.venv/|instance/)
+
 repos:
   - repo: https://github.com/psf/black
     rev: 24.1.0
     hooks:
       - id: black
-  - repo: https://github.com/pycqa/ruff
-    rev: 0.0.290
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
     hooks:
-      - id: ruff
-  - repo: https://github.com/pre-commit/mirrors-isort
-    rev: v5.12.0
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+  - repo: local
     hooks:
-      - id: isort
-*** End Patch
+      - id: bandit
+        name: bandit
+        entry: bandit -r . -x ./.github,./.venv,./frontend/node_modules -s B101
+        language: python
+        additional_dependencies:
+          - bandit==1.7.8
+        pass_filenames: false

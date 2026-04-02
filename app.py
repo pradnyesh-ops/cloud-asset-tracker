@@ -3,17 +3,33 @@ import re
 import ipaddress
 from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    login_user,
+    login_required,
+    logout_user,
+    current_user,
+)
 from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
+from jinja2 import TemplateNotFound
 
 load_dotenv()
 
+
+def require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///cloud_asset_tracker.db")
+app.config["SECRET_KEY"] = require_env("SECRET_KEY")
+app.config["SQLALCHEMY_DATABASE_URI"] = require_env("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 bcrypt = Bcrypt(app)
@@ -60,11 +76,29 @@ def validate_password(value: str) -> bool:
     return bool(PASSWORD_REGEX.match(value))
 
 
+def render_or_message(template_name: str, **context):
+    try:
+        return render_template(template_name, **context)
+    except TemplateNotFound:
+        return (
+            jsonify(
+                {
+                    "message": "Flask templates are not present. Use the React frontend at http://localhost:5173.",
+                    "missing_template": template_name,
+                }
+            ),
+            200,
+        )
+
+
 @app.route("/")
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
+    return jsonify({"status": "ok", "service": "cloud-asset-tracker-backend"}), 200
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "healthy"}), 200
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -79,19 +113,22 @@ def register():
 
         if not email or not password or not confirm_password:
             flash("All fields are required.", "danger")
-            return render_template("register.html")
+            return render_or_message("register.html")
 
         if not EMAIL_REGEX.match(email):
             flash("Enter a valid email address.", "danger")
-            return render_template("register.html")
+            return render_or_message("register.html")
 
         if not validate_password(password):
-            flash("Password must be 8+ chars with upper, lower, number, and symbol.", "danger")
-            return render_template("register.html")
+            flash(
+                "Password must be 8+ chars with upper, lower, number, and symbol.",
+                "danger",
+            )
+            return render_or_message("register.html")
 
         if password != confirm_password:
             flash("Passwords do not match.", "danger")
-            return render_template("register.html")
+            return render_or_message("register.html")
 
         existing_user = User.query.filter_by(email=email).first()
         if existing_user:
@@ -106,7 +143,7 @@ def register():
         flash("Registration successful. Please log in.", "success")
         return redirect(url_for("login"))
 
-    return render_template("register.html")
+    return render_or_message("register.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -126,7 +163,7 @@ def login():
 
         flash("Invalid credentials.", "danger")
 
-    return render_template("login.html")
+    return render_or_message("login.html")
 
 
 @app.route("/logout")
@@ -141,7 +178,7 @@ def logout():
 @login_required
 def dashboard():
     assets = Asset.query.filter_by(owner_id=current_user.id).all()
-    return render_template("dashboard.html", assets=assets)
+    return render_or_message("dashboard.html", assets=assets)
 
 
 @app.route("/asset/new", methods=["GET", "POST"])
@@ -154,15 +191,15 @@ def create_asset():
 
         if not asset_name:
             flash("Asset name is required.", "danger")
-            return render_template("asset_form.html", action="Create")
+            return render_or_message("asset_form.html", action="Create")
 
         if not validate_ip(ip_address):
             flash("Enter a valid IPv4 address.", "danger")
-            return render_template("asset_form.html", action="Create")
+            return render_or_message("asset_form.html", action="Create")
 
         if not cloud_provider:
             flash("Cloud provider is required.", "danger")
-            return render_template("asset_form.html", action="Create")
+            return render_or_message("asset_form.html", action="Create")
 
         asset = Asset(
             asset_name=asset_name,
@@ -176,7 +213,7 @@ def create_asset():
         flash("Asset created successfully.", "success")
         return redirect(url_for("dashboard"))
 
-    return render_template("asset_form.html", action="Create")
+    return render_or_message("asset_form.html", action="Create")
 
 
 @app.route("/asset/<int:asset_id>/edit", methods=["GET", "POST"])
@@ -191,15 +228,15 @@ def edit_asset(asset_id):
 
         if not asset_name:
             flash("Asset name is required.", "danger")
-            return render_template("asset_form.html", action="Update", asset=asset)
+            return render_or_message("asset_form.html", action="Update", asset=asset)
 
         if not validate_ip(ip_address):
             flash("Enter a valid IPv4 address.", "danger")
-            return render_template("asset_form.html", action="Update", asset=asset)
+            return render_or_message("asset_form.html", action="Update", asset=asset)
 
         if not cloud_provider:
             flash("Cloud provider is required.", "danger")
-            return render_template("asset_form.html", action="Update", asset=asset)
+            return render_or_message("asset_form.html", action="Update", asset=asset)
 
         asset.asset_name = asset_name
         asset.ip_address = ip_address
@@ -209,7 +246,7 @@ def edit_asset(asset_id):
         flash("Asset updated successfully.", "success")
         return redirect(url_for("dashboard"))
 
-    return render_template("asset_form.html", action="Update", asset=asset)
+    return render_or_message("asset_form.html", action="Update", asset=asset)
 
 
 @app.route("/asset/<int:asset_id>/delete", methods=["POST"])
@@ -227,4 +264,5 @@ with app.app_context():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug_mode = os.getenv("FLASK_DEBUG", "false").strip().lower() == "true"
+    app.run(debug=debug_mode)
