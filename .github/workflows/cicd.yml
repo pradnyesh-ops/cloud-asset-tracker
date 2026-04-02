@@ -20,7 +20,7 @@ jobs:
   #  JOB 1 — Flask backend checks
   # ──────────────────────────────────────────
   backend-checks:
-    name: 🐍 Backend — Tests · Security · Audit
+    name: 🐍 Backend:Tests · Security · Audit
     runs-on: ubuntu-latest
 
     steps:
@@ -61,15 +61,9 @@ jobs:
       - name: pip-audit (dependency CVEs)
         run: pip-audit -r requirements.txt
 
-  # ──────────────────────────────────────────
-  #  JOB 2 — React / Vite frontend build check
-  #  Confirms the app compiles cleanly in CI.
-  #  The real production build happens on EC2
-  #  during deploy so the server always has
-  #  the latest dist/ without file transfers.
-  # ──────────────────────────────────────────
+
   frontend-checks:
-    name: ⚛️ Frontend — Build check
+    name: ⚛️ Frontend:Build check
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -7,6 +7,7 @@ import {
   clearSession,
   addAuditLog,
 } from "../lib/storage.js";
+import { generateId } from "../lib/id.js";
 import { validateEmail, validatePassword } from "../lib/validators.js";
 
 const AuthContext = createContext(null);
@@ -51,7 +52,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     const newUser = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       name: name.trim(),
       email: email.toLowerCase(),
       password,
@@ -61,7 +62,7 @@ export const AuthProvider = ({ children }) => {
     saveUsers(users);
     setUser({ id: newUser.id, email: newUser.email, name: newUser.name });
     addAuditLog({
-      id: crypto.randomUUID(),
+      id: generateId(),
       action: "REGISTER",
       actor: newUser.email,
       timestamp: new Date().toISOString(),
@@ -86,7 +87,7 @@ export const AuthProvider = ({ children }) => {
     }
     setUser({ id: existing.id, email: existing.email, name: existing.name });
     addAuditLog({
-      id: crypto.randomUUID(),
+      id: generateId(),
       action: "LOGIN",
       actor: existing.email,
       timestamp: new Date().toISOString(),
@@ -98,7 +99,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     if (user?.email) {
       addAuditLog({
-        id: crypto.randomUUID(),
+        id: generateId(),
         action: "LOGOUT",
         actor: user.email,
         timestamp: new Date().toISOString(),
@@ -119,7 +120,7 @@ export const AuthProvider = ({ children }) => {
     saveUsers(users);
     setUser({ id: updated.id, email: updated.email, name: updated.name });
     addAuditLog({
-      id: crypto.randomUUID(),
+      id: generateId(),
       action: "PROFILE_UPDATE",
       actor: updated.email,
       timestamp: new Date().toISOString(),

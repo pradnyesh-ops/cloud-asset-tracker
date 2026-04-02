@@ -5,6 +5,7 @@ import AssetForm from "../components/AssetForm.jsx";
 import AssetTable from "../components/AssetTable.jsx";
 import Pagination from "../components/Pagination.jsx";
 import { getAssets, saveAssets, addAuditLog } from "../lib/storage.js";
+import { generateId } from "../lib/id.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const PROVIDERS = ["All", "AWS", "Azure", "GCP", "Oracle", "Other"];
@@ -63,14 +64,14 @@ export default function Dashboard() {
 
   const handleCreate = (payload) => {
     const newAsset = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       ownerEmail: user.email,
       createdAt: new Date().toISOString(),
       ...payload,
     };
     persistAssets([newAsset, ...assets]);
     addAuditLog({
-      id: crypto.randomUUID(),
+      id: generateId(),
       action: "ASSET_CREATE",
       actor: user.email,
       timestamp: new Date().toISOString(),
@@ -85,7 +86,7 @@ export default function Dashboard() {
     );
     persistAssets(updated);
     addAuditLog({
-      id: crypto.randomUUID(),
+      id: generateId(),
       action: "ASSET_UPDATE",
       actor: user.email,
       timestamp: new Date().toISOString(),
@@ -100,7 +101,7 @@ export default function Dashboard() {
     persistAssets(updated);
     if (deleted) {
       addAuditLog({
-        id: crypto.randomUUID(),
+        id: generateId(),
         action: "ASSET_DELETE",
         actor: user.email,
         timestamp: new Date().toISOString(),
