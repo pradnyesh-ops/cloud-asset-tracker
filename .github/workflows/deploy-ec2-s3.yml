@@ -32,6 +32,19 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Build frontend
+        run: |
+          cd /opt/cloud-asset-tracker
+          if ! command -v node >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y nodejs npm
+          fi
+          cd frontend
+          npm ci || npm install
+          npm run build
+          sudo mkdir -p /var/www/cloud-asset-tracker
+          sudo rsync -a --delete dist/ /var/www/cloud-asset-tracker/
+
       - name: Configure systemd and nginx
         run: |
           test -f /opt/cloud-asset-tracker/.env || (echo "/opt/cloud-asset-tracker/.env missing" && exit 1)
