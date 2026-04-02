@@ -1,8 +1,6 @@
 name: Deploy to EC2 (Self-hosted)
 
 on:
-  push:
-    branches: ["main", "master"]
   workflow_dispatch:
 
 jobs:
@@ -36,14 +34,21 @@ jobs:
         run: |
           cd /opt/cloud-asset-tracker
           if ! command -v node >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y nodejs npm
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y nodejs npm
+            elif command -v dnf >/dev/null 2>&1; then
+              sudo dnf install -y nodejs npm
+            elif command -v yum >/dev/null 2>&1; then
+              sudo yum install -y nodejs npm
+            else
+              echo "No supported package manager found for Node.js install"
+              exit 1
+            fi
           fi
           cd frontend
           npm ci || npm install
           npm run build
-          sudo mkdir -p /var/www/cloud-asset-tracker
-          sudo rsync -a --delete dist/ /var/www/cloud-asset-tracker/
 
       - name: Configure systemd and nginx
         run: |
